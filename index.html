@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title id="pageTitle">Problemlöser</title>
 <style>
   :root{--bg:#f4f6f8;--card:#fff;--text:#20252b;--muted:#65707c;--line:#d9dee5;--accent:#3b6ea8;--ok:#2f7d4a;}
@@ -44,11 +45,26 @@
   .checkbox-row{display:flex;gap:8px;margin:8px 0;align-items:flex-start}
   .checkbox-wrap{display:flex;align-items:center;margin-top:11px;min-width:20px;height:20px}
   .checkbox-wrap input{width:16px;height:16px;cursor:pointer}
+  .gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px}
+  .gate-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px;max-width:320px;width:100%;text-align:center;box-shadow:0 2px 8px #0000000a}
+  .gate-card h2{margin:0 0 4px}
+  .gate-card p{color:var(--muted);margin:0 0 14px}
+  .gate-card input{margin-bottom:10px;text-align:center}
+  .gate-error{color:#8a2f2f;font-size:.9rem;min-height:1.2em;margin:6px 0 0}
   @media(max-width:600px){.wrap{padding:14px}}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="gate" class="gate">
+  <div class="gate-card">
+    <h2>🔒 Zugang</h2>
+    <p>Bitte Passwort eingeben</p>
+    <input id="gatePw" type="password" placeholder="Passwort" autofocus onkeydown="if(event.key==='Enter')checkGate()">
+    <button class="primary" style="width:100%" onclick="checkGate()">Los</button>
+    <p class="gate-error" id="gateError"></p>
+  </div>
+</div>
+<div class="wrap" id="appRoot" style="display:none">
 <header>
   <h1 id="appTitle"></h1>
   <p class="sub" id="appSub"></p>
@@ -73,12 +89,37 @@
   <button id="next" class="primary" onclick="goNext()">Weiter →</button>
 </div>
 
+
 <button class="summaryBtn" onclick="goToSummary()">📋 Zusammenfassung</button>
 
 <p class="tip" id="appTip"></p>
 </div>
 
 <script>
+/* ---------- Zugangs-Sperre (nur einfacher Schutz vor Suchmaschinen/
+   zufälligen Besuchern, KEINE echte Sicherheit — das Passwort steht
+   im Klartext im HTML-Quelltext und ist per Browser-Entwicklertools
+   in Sekunden auslesbar) ---------- */
+
+const GATE_PASSWORD="tween";
+
+function checkGate(){
+ const val=document.getElementById("gatePw").value;
+ if(val===GATE_PASSWORD){
+   sessionStorage.setItem("problemloser_gate_ok","1");
+   unlockGate();
+ }else{
+   document.getElementById("gateError").textContent="Falsches Passwort.";
+   document.getElementById("gatePw").value="";
+   document.getElementById("gatePw").focus();
+ }
+}
+function unlockGate(){
+ document.getElementById("gate").style.display="none";
+ document.getElementById("appRoot").style.display="";
+}
+if(sessionStorage.getItem("problemloser_gate_ok")==="1"){ unlockGate(); }
+
 /* ============================================================
    DATENMODELL — wie eine kleine Datenbank mit stabilen IDs
    ------------------------------------------------------------
