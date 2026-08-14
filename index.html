@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title id="pageTitle">Problemlöser</title>
+<style>
+  :root{--bg:#f4f6f8;--card:#fff;--text:#20252b;--muted:#65707c;--line:#d9dee5;--accent:#3b6ea8;--ok:#2f7d4a;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--text)}
+  .wrap{max-width:900px;margin:0 auto;padding:24px}
+  header{text-align:center;margin-bottom:20px}
+  h1{font-size:2rem;margin:.2em 0}
+  .sub{color:var(--muted);margin:0}
+  .modeSwitch{display:flex;justify-content:center;gap:0;margin:14px 0 4px;background:#eef1f4;border-radius:10px;padding:4px;max-width:340px;margin-left:auto;margin-right:auto}
+  .modeSwitch button{flex:1;background:transparent;color:var(--text);font-weight:600;padding:9px 10px}
+  .modeSwitch button.active{background:var(--accent);color:#fff}
+  .progress{height:9px;background:#e2e6eb;border-radius:20px;overflow:hidden;margin:18px 0}
+  .bar{height:100%;width:16.66%;background:var(--accent);transition:.25s}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin:14px 0;box-shadow:0 2px 8px #0000000a}
+  .step{display:flex;gap:12px;align-items:flex-start}
+  .num{min-width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#eaf1f8;font-weight:700;color:var(--accent)}
+  h2{font-size:1.2rem;margin:2px 0 5px}
+  .hint{color:var(--muted);margin:0 0 12px}
+  textarea,input[type=text],select{width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:11px;background:#fff}
+  textarea{min-height:1.5em;max-height:300px;overflow-y:auto;resize:none}
+  .idea{display:flex;gap:8px;margin:8px 0;align-items:flex-start}
+  .idea input,.idea textarea{flex:1}
+  button{font:inherit;border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
+  .primary{background:var(--accent);color:#fff}
+  .secondary{background:#eef1f4;color:var(--text)}
+  .danger{background:#f6e7e7;color:#8a2f2f}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .selected{outline:3px solid #a9c4df}
+  .footer{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+  .footer #next{width:100%}
+  .stepnav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
+  .stepnav button{flex:0 0 auto;padding:8px 10px;font-size:.85rem;background:#eef1f4;color:var(--text);white-space:nowrap;border-radius:8px;}
+  .stepnav button.active{background:var(--accent);color:#fff}
+  .summaryBtn{width:100%;margin-top:10px;background:#eef6ee;color:var(--ok);font-weight:600}
+  .tip{font-size:.95rem;color:var(--muted);text-align:center;margin:20px 0}
+  .hidden{display:none}
+  .summary p{margin:.45em 0}
+  .checkbox-row{display:flex;gap:8px;margin:8px 0;align-items:flex-start}
+  .checkbox-wrap{display:flex;align-items:center;margin-top:11px;min-width:20px;height:20px}
+  .checkbox-wrap input{width:16px;height:16px;cursor:pointer}
+  @media(max-width:600px){.wrap{padding:14px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 id="appTitle"></h1>
+  <p class="sub" id="appSub"></p>
+  <div class="modeSwitch">
+    <button id="modeBtnKids" onclick="setMode('kids')">🧒 Einfach</button>
+    <button id="modeBtnEngineer" onclick="setMode('engineer')">⚙️ Ingenieur</button>
+  </div>
+  <div class="actions" style="justify-content:center;margin:12px 0">
+    <button class="primary" onclick="saveFile()">💾 Problem speichern</button>
+    <button class="secondary" onclick="openFile()">📂 Problem öffnen</button>
+    <button class="secondary" onclick="newProblem()">🆕 Neues Problem</button>
+  </div>
+  <div id="saveStatus" class="tip" style="margin:8px 0"></div>
+  <input id="fileInput" type="file" accept=".json,application/json" class="hidden" onchange="loadFile(event)">
+  <div class="progress"><div id="bar" class="bar"></div></div>
+</header>
+
+<div id="app"></div>
+
+<div class="footer">
+  <div id="stepnav" class="stepnav"></div>
+  <button id="next" class="primary" onclick="goNext()">Weiter →</button>
+</div>
+
+<button class="summaryBtn" onclick="goToSummary()">📋 Zusammenfassung</button>
+
+<p class="tip" id="appTip"></p>
+</div>
+
+<script>
+/* ============================================================
+   DATENMODELL — wie eine kleine Datenbank mit stabilen IDs
+   ------------------------------------------------------------
+   Das Datenmodell ist für BEIDE Modi (Kinder/Ingenieur) identisch.
+   Nur die angezeigten Texte (Titel, Hinweise, Platzhalter) unterscheiden
+   sich modusabhängig — siehe LABELS weiter unten. So bleiben gespeicherte
+   .json-Dateien in beiden Modi les- und weiterbearbeitbar.
+
+   data.stakeholders    = [{id, text}]                  Tabelle "stakeholders"
+   data.needs           = [{id, text, stakeholderId}]   Tabelle "needs" (= Anforderungen/Punkte),
+                                                          FK stakeholderId -> stakeholders.id
+   data.origins         = [{id, text}]                  Tabelle "origins" (Ursachenanalyse)
+   data.selectedNeedIds = [id, ...]                      ausgewählte needs zählen als "Punkt"
+   data.ideas           = { [pointId]: [{id, text}] }   Tabelle "ideas", Fremdschlüssel pointId
+   data.selectedIdeas   = [{ideaId, pointId, combined}] Tabelle "selections"
+   data.good/bad/change = [{id, text}]
+
+   Seite 5 und 6 verweisen NUR über die ID auf einen Punkt bzw. eine
+   Idee — nie über den angezeigten Text. Deshalb:
+   - Umbenennen auf Seite 4 wirkt sich überall sofort aus (gleiche ID).
+   - Löschen eines Punkts auf Seite 4 löscht automatisch per Kaskade
+     auch die zugehörigen Ideen (Seite 5) und Auswahlen (Seite 6).
+   - Ein Häkchen bei einem Punkt nur entfernen (nicht löschen) blendet
+     ihn zwar aus, zerstört aber keine bereits erfassten Ideen — hakt
+     man ihn wieder an, sind sie wieder da.
+   - Löschen eines Stakeholders (Seite 3) setzt nur stakeholderId bei
+     betroffenen Punkten auf null (kein Kaskadenlöschen des Punkts
+     selbst — der Punkt bleibt gültig, nur unzugeordnet).
+   - Ist data.stakeholders komplett leer (kein einziger nicht-leerer
+     Eintrag), wird auf Seite 4 gar kein Zuordnungs-Dropdown angezeigt
+     (siehe hasStakeholders() / render()).
+   ============================================================ */
+
+const LABELS = {
+ kids:{
+   pageTitle:"Mein Problemlöser",
+   appTitle:"🧠 Mein Problemlöser",
+   appSub:"Erst verstehen. Dann lösen. Ausprobieren. Verbessern.",
+   appTip:"💡 Du musst nicht sofort die perfekte Lösung finden. Gute Ideen darf man ausprobieren und verbessern.",
+   steps:[
+     {title:"Was ist los?",hint:"Was genau ist mein Problem?"},
+     {title:"Was soll sein?",hint:"Woran merke ich, dass mein Problem gelöst ist? (Ziel)"},
+     {title:"Wer ist beteiligt?",hint:"Wer hat mit deinem Problem zu tun oder kann dir helfen? (z. B. Mama, Papa, Lehrerin, bester Freund)"},
+     {title:"Was muss dafür klappen?",hint:"Welche Dinge müssen funktionieren, damit ich mein Ziel erreiche? (Anforderungsanalyse)"},
+     {title:"Welche Ideen habe ich?",hint:"Was könnte ich ausprobieren? Für jeden ausgewählten Punkt kannst du Ideen sammeln. (Lösungskonzepte)"},
+     {title:"Welche Ideen probiere ich aus?",hint:"Wähle eine oder mehrere Ideen aus und erkläre, warum und wie du sie umsetzt."},
+     {title:"Hat es funktioniert?",hint:"Teste deine Lösung. Wenn es noch nicht klappt, verbessere sie."}
+   ],
+   stepLabels:["1. Was","2. Wie","3. Wer","4. Klappen","5. Ideen","6. Probieren","7. Funkt."],
+   problemPh:"Zum Beispiel: Ich komme morgens oft zu spät.",
+   filenamePh:"z.B. Morgens_zu_spät",
+   goalPh:"Zum Beispiel: Ich bin um 7:30 Uhr fertig und habe alles dabei.",
+   stakeholderHeader:"Wer ist beteiligt?",
+   stakeholderPh:"z. B. Meine Lehrerin – möchte, dass ich pünktlich komme",
+   addStakeholder:"+ Noch jemand",
+   noneOption:"– niemandem zugeordnet –",
+   needsHeader:"Was muss dafür klappen?",
+   needPh:"Was muss klappen?",
+   addNeed:"+ Noch etwas",
+   originHeader:"Bei welchem dieser Punkte entsteht eigentlich das Problem? Oben auswählen oder unten beschreiben.",
+   originPh:"Problem bei:",
+   addOrigin:"+ Noch etwas",
+   noPointsMsg:"Gehe einen Schritt zurück und wähle mindestens einen Punkt aus.",
+   ideasHeaderPrefix:"Ideen für: ",
+   ideaPh:"Idee",
+   addIdea:"+ Weitere Idee",
+   noIdeasMsg:"Gehe einen Schritt zurück und sammle mindestens eine Idee.",
+   combinedLabel:"Warum diese Idee und mein erster Schritt:",
+   combinedPh:"Warum ist das eine gute Lösung? Was mache ich konkret?",
+   testSections:[
+     {key:"good",label:"Was hat gut funktioniert?",ph:"Das hat gut geklappt ..."},
+     {key:"bad",label:"Was hat nicht funktioniert?",ph:"Das hat noch nicht geklappt ..."},
+     {key:"change",label:"Was ändere oder probiere ich jetzt?",ph:"Beim nächsten Versuch mache ich ..."}
+   ],
+   addTestField:"+ Weiterer Punkt",
+   summaryTitle:"🎉 Dein Problemlöser-Ergebnis",
+   summaryProblem:"Problem:",
+   summaryGoal:"Ziel:",
+   summaryStakeholders:"Beteiligte:",
+   summaryStakeholdersNone:"Keine erfasst",
+   summaryPoints:"Relevante Punkte:",
+   summaryPointsNone:"Keine ausgewählt",
+   summaryIdeas:"Ausgewählte Ideen & Schritte:",
+   summaryIdeasNone:"Keine ausgewählt",
+   summaryGood:"Was hat gut funktioniert?",
+   summaryBad:"Was hat nicht funktioniert?",
+   summaryChange:"Nächste Änderung:",
+   stakeholderTag:"beteiligt"
+ },
+ engineer:{
+   pageTitle:"Problemlösungsprozess",
+   appTitle:"⚙️ Problemlösung",
+   appSub:"Analysieren. Anforderungen klären. Konzepte entwickeln. Verifizieren.",
+   appTip:"💡 Iteratives Vorgehen: Konzepte werden bewertet, umgesetzt und anhand der Erfolgskriterien verifiziert. Rücksprünge im Prozess sind normal.",
+   steps:[
+     {title:"Problemstellung",hint:"Ist-Zustand beschreiben: Was genau ist das Problem, in welchem Kontext tritt es auf?"},
+     {title:"Zielsetzung",hint:"Soll-Zustand definieren: Woran ist zu erkennen, dass das Problem gelöst ist? (Erfolgskriterien)"},
+     {title:"Stakeholder",hint:"Wer hat ein Interesse an der Lösung oder wird von ihr beeinflusst? (z. B. Kunde, Nutzer, Fertigung, Instandhaltung, Qualitätssicherung, Gesetzgeber)"},
+     {title:"Anforderungsanalyse",hint:"Welche Anforderungen müssen erfüllt sein, damit das Ziel erreicht wird? Jede Anforderung dem verantwortlichen Stakeholder zuordnen."},
+     {title:"Lösungskonzepte",hint:"Für jede ausgewählte Anforderung mögliche Lösungsansätze sammeln."},
+     {title:"Konzeptauswahl & Umsetzung",hint:"Vielversprechendste Konzepte auswählen, Begründung und ersten Umsetzungsschritt festhalten."},
+     {title:"Verifikation & Validierung",hint:"Umsetzung gegen die Erfolgskriterien prüfen: Was funktioniert, was nicht, welche Anpassung ist nötig?"}
+   ],
+   stepLabels:["1. Problem","2. Ziel","3. Stakeholder","4. Anford.","5. Konzepte","6. Auswahl","7. Verifik."],
+   problemPh:"z. B. Die Fördermenge der Anlage liegt 15 % unter der spezifizierten Leistung.",
+   filenamePh:"z. B. Foerdermenge_Anlage_A12",
+   goalPh:"z. B. Die Anlage erreicht dauerhaft die spezifizierte Fördermenge von 500 t/h.",
+   stakeholderHeader:"Stakeholder erfassen",
+   stakeholderPh:"z. B. Qualitätssicherung – fordert Prozessfähigkeit cpk ≥ 1,33",
+   addStakeholder:"+ Weiteren Stakeholder",
+   noneOption:"– kein Stakeholder zugeordnet –",
+   needsHeader:"Anforderungen",
+   needPh:"Anforderung formulieren, z. B. Antriebsleistung ≥ 5 kW",
+   addNeed:"+ Weitere Anforderung",
+   originHeader:"Ursachenanalyse: Bei welcher Anforderung liegt vermutlich die eigentliche Problemursache? Oben auswählen oder unten beschreiben.",
+   originPh:"Vermutete Ursache bei:",
+   addOrigin:"+ Noch etwas",
+   noPointsMsg:"Gehe einen Schritt zurück und wähle mindestens eine Anforderung aus.",
+   ideasHeaderPrefix:"Lösungskonzepte für: ",
+   ideaPh:"Lösungsansatz",
+   addIdea:"+ Weiterer Lösungsansatz",
+   noIdeasMsg:"Gehe einen Schritt zurück und sammle mindestens ein Lösungskonzept.",
+   combinedLabel:"Begründung der Auswahl und erster Umsetzungsschritt:",
+   combinedPh:"Warum ist das die richtige Lösung? Was ist der konkrete nächste Schritt?",
+   testSections:[
+     {key:"good",label:"Was hat sich bewährt (Anforderung erfüllt)?",ph:"z. B. Anforderung X vollständig erfüllt"},
+     {key:"bad",label:"Welche Anforderungen sind noch nicht erfüllt?",ph:"z. B. Anforderung Y nur teilweise erfüllt"},
+     {key:"change",label:"Welche Anpassung / nächste Iteration ist nötig?",ph:"z. B. Auslegung anpassen und erneut testen"}
+   ],
+   addTestField:"+ Weiterer Punkt",
+   summaryTitle:"📊 Ergebnis der Problemlösung",
+   summaryProblem:"Problemstellung:",
+   summaryGoal:"Zielsetzung:",
+   summaryStakeholders:"Stakeholder:",
+   summaryStakeholdersNone:"Keine erfasst",
+   summaryPoints:"Anforderungen:",
+   summaryPointsNone:"Keine ausgewählt",
+   summaryIdeas:"Gewählte Konzepte & Umsetzungsschritte:",
+   summaryIdeasNone:"Keine ausgewählt",
+   summaryGood:"Was hat sich bewährt?",
+   summaryBad:"Was ist noch nicht erfüllt?",
+   summaryChange:"Nächste Iteration / Anpassung:",
+   stakeholderTag:"Stakeholder"
+ }
+};
+
+function L(){ return LABELS[mode]; }
+
+let mode=localStorage.getItem("problemloser_mode")||"kids";
+let current=0, data=JSON.parse(localStorage.getItem("problemloser")||"{}"), showingSummary=false;
+
+function save(){localStorage.setItem("problemloser",JSON.stringify(data));}
+function esc(s){return (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function uid(prefix){return prefix+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+
+function autoGrow(el){
+ el.style.height='auto';
+ el.style.height=Math.min(el.scrollHeight,300)+'px';
+}
+function setupAutoGrow(){
+ document.querySelectorAll('textarea').forEach(ta=>autoGrow(ta));
+}
+
+/* ---------- Moduswechsel ---------- */
+
+function setMode(m){
+ mode=m;
+ localStorage.setItem("problemloser_mode",m);
+ applyModeChrome();
+ render();
+}
+function applyModeChrome(){
+ const l=L();
+ document.getElementById("pageTitle").textContent=l.pageTitle;
+ document.getElementById("appTitle").textContent=l.appTitle;
+ document.getElementById("appSub").textContent=l.appSub;
+ document.getElementById("appTip").textContent=l.appTip;
+ document.getElementById("modeBtnKids").classList.toggle("active",mode==="kids");
+ document.getElementById("modeBtnEngineer").classList.toggle("active",mode==="engineer");
+}
+
+/* ---------- Hilfsfunktionen für das Datenmodell ---------- */
+
+function ensureDefaults(){
+ if(!data.stakeholders) data.stakeholders=[{id:uid("stakeholder"),text:""}];
+ if(!data.needs) data.needs=[uid("need"),uid("need"),uid("need")].map(id=>({id,text:"",stakeholderId:null}));
+ if(!data.origins) data.origins=[uid("origin"),uid("origin")].map(id=>({id,text:""}));
+ if(!data.selectedNeedIds) data.selectedNeedIds=[];
+ if(!data.ideas) data.ideas={};
+ if(!data.selectedIdeas) data.selectedIdeas=[];
+ if(!data.good) data.good=[{id:uid("good"),text:""}];
+ if(!data.bad) data.bad=[{id:uid("bad"),text:""}];
+ if(!data.change) data.change=[{id:uid("change"),text:""}];
+}
+
+function getPoints(){
+ const selectedNeeds=(data.needs||[]).filter(n=>(data.selectedNeedIds||[]).includes(n.id)&&n.text.trim());
+ const originPoints=(data.origins||[]).filter(o=>o.text.trim());
+ return [...selectedNeeds,...originPoints];
+}
+
+function hasStakeholders(){
+ return (data.stakeholders||[]).some(s=>s.text.trim());
+}
+
+function cascadeDeletePoint(pointId){
+ if(data.ideas && data.ideas[pointId]){
+   const ideaIds=data.ideas[pointId].map(i=>i.id);
+   delete data.ideas[pointId];
+   data.selectedIdeas=(data.selectedIdeas||[]).filter(s=>!ideaIds.includes(s.ideaId));
+ }
+ data.selectedNeedIds=(data.selectedNeedIds||[]).filter(id=>id!==pointId);
+}
+
+/* ---------- Live-Aktualisierung: kein "Sammeln beim Weiterklicken" mehr ---------- */
+
+function updateText(el,kind,idA,idB){
+ autoGrow(el);
+ if(kind==='problem') data.problem=el.value;
+ else if(kind==='filename') data.filename=el.value;
+ else if(kind==='goal') data.goal=el.value;
+ else if(kind==='stakeholder'){const s=(data.stakeholders||[]).find(x=>x.id===idA); if(s) s.text=el.value;}
+ else if(kind==='need'){const n=(data.needs||[]).find(x=>x.id===idA); if(n) n.text=el.value;}
+ else if(kind==='origin'){const o=(data.origins||[]).find(x=>x.id===idA); if(o) o.text=el.value;}
+ else if(kind==='idea'){const arr=(data.ideas[idA]||[]); const it=arr.find(x=>x.id===idB); if(it) it.text=el.value;}
+ else if(kind==='combined'){const s=(data.selectedIdeas||[]).find(x=>x.ideaId===idA); if(s) s.combined=el.value;}
+ else if(kind==='test'){const arr=data[idA]||[]; const it=arr.find(x=>x.id===idB); if(it) it.text=el.value;}
+ save();
+}
+
+function updateNeedStakeholder(el,needId){
+ const n=(data.needs||[]).find(x=>x.id===needId);
+ if(n) n.stakeholderId=el.value||null;
+ save();
+}
+function stakeholderOptions(selectedId){
+ let opts=`<option value="">${L().noneOption}</option>`;
+ (data.stakeholders||[]).filter(s=>s.text.trim()).forEach(s=>{
+   opts+=`<option value="${s.id}" ${selectedId===s.id?'selected':''}>${esc(s.text)}</option>`;
+ });
+ return opts;
+}
+function stakeholderText(id){
+ const s=(data.stakeholders||[]).find(x=>x.id===id);
+ return s?s.text:"";
+}
+
+/* ---------- Render ---------- */
+
+function render(){
+ ensureDefaults();
+ const l=L();
+ const s=l.steps[current];
+ let html=`<div class="card"><div class="step"><div class="num">${current+1}</div><div style="width:100%">
+ <h2>${s.title}</h2><p class="hint">${s.hint}</p>`;
+
+ if(current===0){
+   html+=`<textarea oninput="updateText(this,'problem')" placeholder="${esc(l.problemPh)}">${esc(data.problem||"")}</textarea>
+   <p style="margin-top:14px">Dateiname:</p>
+   <input type="text" oninput="updateText(this,'filename')" placeholder="${esc(l.filenamePh)}" value="${esc(data.filename||"")}">`;
+ }
+
+ if(current===1){
+   html+=`<textarea oninput="updateText(this,'goal')" placeholder="${esc(l.goalPh)}">${esc(data.goal||"")}</textarea>`;
+ }
+
+ if(current===2){
+   html+=`<p><b>${esc(l.stakeholderHeader)}</b></p>`;
+   data.stakeholders.forEach(st=>{
+     html+=`<div class="idea"><textarea oninput="updateText(this,'stakeholder','${st.id}')" placeholder="${esc(l.stakeholderPh)}">${esc(st.text)}</textarea>
+     <button class="danger" onclick="removeStakeholder('${st.id}')">×</button></div>`;
+   });
+   html+=`<button class="secondary" onclick="addStakeholder()">${esc(l.addStakeholder)}</button>`;
+ }
+
+ if(current===3){
+   const showStakeholderSelect=hasStakeholders();
+   html+=`<p><b>${esc(l.needsHeader)}</b></p>`;
+   data.needs.forEach(n=>{
+     const trimmed=n.text.trim();
+     const isSelected=data.selectedNeedIds.includes(n.id);
+     html+=`<div class="checkbox-row">
+       ${trimmed?`<div class="checkbox-wrap"><input type="checkbox" ${isSelected?'checked':''} onchange="toggleNeedSelection('${n.id}')"></div>`:``}
+       <div style="flex:1">
+         <textarea oninput="updateText(this,'need','${n.id}')" placeholder="${esc(l.needPh)}">${esc(n.text)}</textarea>
+         ${showStakeholderSelect?`<select style="margin-top:6px" onchange="updateNeedStakeholder(this,'${n.id}')">${stakeholderOptions(n.stakeholderId)}</select>`:``}
+       </div>
+       <button class="danger" onclick="removeNeed('${n.id}')" style="align-self:flex-start">×</button>
+     </div>`;
+   });
+   html+=`<button class="secondary" onclick="addNeed()">${esc(l.addNeed)}</button>`;
+   html+=`<p style="margin-top:18px"><b>${esc(l.originHeader)}</b></p>`;
+   data.origins.forEach(o=>{
+     html+=`<div class="idea"><textarea oninput="updateText(this,'origin','${o.id}')" placeholder="${esc(l.originPh)}">${esc(o.text)}</textarea>
+     <button class="danger" onclick="removeOrigin('${o.id}')">×</button></div>`;
+   });
+   html+=`<button class="secondary" onclick="addOrigin()">${esc(l.addOrigin)}</button>`;
+ }
+
+ if(current===4){
+   const points=getPoints();
+   if(!points.length) html+=`<p>${esc(l.noPointsMsg)}</p>`;
+   points.forEach(p=>{
+     html+=`<p style="margin-top:14px"><b>${esc(l.ideasHeaderPrefix)}${esc(p.text)}</b></p>`;
+     if(!data.ideas[p.id] || !data.ideas[p.id].length){
+       data.ideas[p.id]=[{id:uid("idea"),text:""}];
+     }
+     data.ideas[p.id].forEach((idea,i)=>{
+       html+=`<div class="idea"><textarea oninput="updateText(this,'idea','${p.id}','${idea.id}')" placeholder="${esc(l.ideaPh)}">${esc(idea.text)}</textarea>
+       ${i>0?`<button class="danger" onclick="removeIdea('${p.id}','${idea.id}')">×</button>`:``}</div>`;
+     });
+     html+=`<button class="secondary" onclick="addIdea('${p.id}')">${esc(l.addIdea)}</button>`;
+   });
+ }
+
+ if(current===5){
+   const points=getPoints();
+   const allIdeas=[];
+   points.forEach(p=>{
+     (data.ideas[p.id]||[]).filter(i=>i.text.trim()).forEach(idea=>allIdeas.push({point:p,idea}));
+   });
+   if(!allIdeas.length) html+=`<p>${esc(l.noIdeasMsg)}</p>`;
+   allIdeas.forEach(({point,idea})=>{
+     const sel=data.selectedIdeas.find(s=>s.ideaId===idea.id);
+     const isSelected=!!sel;
+     html+=`<div style="margin:12px 0;padding:12px;background:#f9fafb;border-radius:8px;display:flex;gap:8px;align-items:flex-start;">
+       <input type="checkbox" ${isSelected?'checked':''} onchange="toggleIdeaSelection('${idea.id}','${point.id}')" style="margin-top:6px;width:16px;height:16px;flex-shrink:0;cursor:pointer;">
+       <div style="flex:1;">
+         <label style="font-weight:500;display:block;">${esc(idea.text)} <span style="color:#65707c">(${esc(point.text)})</span></label>`;
+     if(isSelected){
+       html+=`<p style="margin-top:10px;margin-bottom:8px;">${esc(l.combinedLabel)}</p>
+       <textarea oninput="updateText(this,'combined','${idea.id}')" placeholder="${esc(l.combinedPh)}">${esc(sel.combined||"")}</textarea>`;
+     }
+     html+=`</div></div>`;
+   });
+ }
+
+ if(current===6){
+   l.testSections.forEach(sec=>{
+     html+=`<p style="margin-top:16px"><b>${esc(sec.label)}</b></p>`;
+     data[sec.key].forEach((item,i)=>{
+       html+=`<div class="idea"><textarea oninput="updateText(this,'test','${sec.key}','${item.id}')" placeholder="${esc(sec.ph)}">${esc(item.text)}</textarea>
+       ${i>0?`<button class="danger" onclick="removeTestField('${sec.key}','${item.id}')">×</button>`:``}</div>`;
+     });
+     html+=`<button class="secondary" onclick="addTestField('${sec.key}')">${esc(l.addTestField)}</button>`;
+   });
+ }
+
+ html+=`</div></div></div>`;
+ document.getElementById("app").innerHTML=html;
+ document.getElementById("next").textContent=current===l.steps.length-1?"🎉 Zusammenfassung":"Weiter →";
+ document.getElementById("bar").style.width=((current+1)/l.steps.length*100)+"%";
+ showingSummary=false;
+ setupAutoGrow();
+ renderStepNav();
+ save();
+}
+
+function renderStepNav(){
+ const nav=document.getElementById("stepnav");
+ if(!nav) return;
+ nav.innerHTML=L().stepLabels.map((label,i)=>
+   `<button class="${(!showingSummary&&current===i)?'active':''}" onclick="goToStep(${i})">${label}</button>`
+ ).join("");
+}
+
+/* ---------- Navigation ---------- */
+
+function goNext(){
+ if(showingSummary){ showingSummary=false; render(); }
+ else if(current<L().steps.length-1){ current++; render(); }
+ else { summary(); }
+}
+function goToStep(i){
+ current=i;
+ showingSummary=false;
+ render();
+}
+function goToSummary(){
+ summary();
+}
+
+/* ---------- Seite 3: Stakeholder ---------- */
+
+function addStakeholder(){data.stakeholders.push({id:uid("stakeholder"),text:""});render();}
+function removeStakeholder(id){
+ const idx=data.stakeholders.findIndex(s=>s.id===id);
+ if(idx>-1) data.stakeholders.splice(idx,1);
+ (data.needs||[]).forEach(n=>{ if(n.stakeholderId===id) n.stakeholderId=null; });
+ render();
+}
+
+/* ---------- Seite 4: needs / origins ---------- */
+
+function addNeed(){data.needs.push({id:uid("need"),text:"",stakeholderId:null});render();}
+function removeNeed(id){
+ const idx=data.needs.findIndex(n=>n.id===id);
+ if(idx>-1) data.needs.splice(idx,1);
+ cascadeDeletePoint(id);
+ render();
+}
+function addOrigin(){data.origins.push({id:uid("origin"),text:""});render();}
+function removeOrigin(id){
+ const idx=data.origins.findIndex(o=>o.id===id);
+ if(idx>-1) data.origins.splice(idx,1);
+ cascadeDeletePoint(id);
+ render();
+}
+function toggleNeedSelection(id){
+ if(data.selectedNeedIds.includes(id)) data.selectedNeedIds=data.selectedNeedIds.filter(x=>x!==id);
+ else data.selectedNeedIds.push(id);
+ save();
+}
+
+/* ---------- Seite 5: Ideen/Lösungskonzepte je Punkt ---------- */
+
+function addIdea(pointId){
+ data.ideas[pointId]=data.ideas[pointId]||[];
+ data.ideas[pointId].push({id:uid("idea"),text:""});
+ render();
+}
+function removeIdea(pointId,ideaId){
+ if(data.ideas[pointId]){
+   data.ideas[pointId]=data.ideas[pointId].filter(i=>i.id!==ideaId);
+ }
+ data.selectedIdeas=(data.selectedIdeas||[]).filter(s=>s.ideaId!==ideaId);
+ render();
+}
+
+/* ---------- Seite 6: Auswahl ---------- */
+
+function toggleIdeaSelection(ideaId,pointId){
+ const exists=data.selectedIdeas.findIndex(s=>s.ideaId===ideaId);
+ if(exists>=0) data.selectedIdeas.splice(exists,1);
+ else data.selectedIdeas.push({ideaId,pointId,combined:""});
+ render();
+}
+
+/* ---------- Seite 7: Test / Verifikation ---------- */
+
+function addTestField(key){
+ data[key].push({id:uid(key),text:""});
+ render();
+}
+function removeTestField(key,id){
+ data[key]=data[key].filter(x=>x.id!==id);
+ if(data[key].length===0) data[key].push({id:uid(key),text:""});
+ render();
+}
+
+/* ---------- Zusammenfassung ---------- */
+
+function formatTestSummary(arr){
+ const clean=(arr||[]).filter(x=>x.text&&x.text.trim());
+ if(!clean.length) return "<i>Keine Angabe</i>";
+ if(clean.length===1) return esc(clean[0].text);
+ return "<br>"+clean.map(x=>"• "+esc(x.text)).join("<br>");
+}
+
+function summary(){
+ const l=L();
+ const points=getPoints();
+ const stakeholderList=(data.stakeholders||[]).filter(s=>s.text.trim());
+ const pointsHtml=points.map(x=>{
+   const st=x.stakeholderId?stakeholderText(x.stakeholderId):"";
+   return "• "+esc(x.text)+(st?` <span style="color:#65707c">(${esc(l.stakeholderTag)}: ${esc(st)})</span>`:"");
+ }).join("<br>");
+ const selectedIdeasHtml=points.map(p=>{
+   const ideasForPoint=(data.selectedIdeas||[]).filter(s=>s.pointId===p.id);
+   if(!ideasForPoint.length) return "";
+   return `<div style="margin-top:12px;padding:10px;background:#f0f5f9;border-radius:8px;">
+    <b>${esc(p.text)}</b><br>
+    ${ideasForPoint.map(s=>{
+       const ideaObj=(data.ideas[p.id]||[]).find(i=>i.id===s.ideaId);
+       return `<div style="margin:8px 0;">
+        • <b>${esc(ideaObj?ideaObj.text:"")}</b><br>
+        <span style="color:#65707c">${esc(s.combined)}</span>
+       </div>`;
+     }).join("")}
+   </div>`;
+ }).filter(x=>x).join("");
+
+ document.getElementById("app").innerHTML=`<div class="card summary">
+ <h2>${l.summaryTitle}</h2>
+ <p><b>${esc(l.summaryProblem)}</b> ${esc(data.problem)}</p>
+ <p><b>${esc(l.summaryGoal)}</b> ${esc(data.goal)}</p>
+ <p><b>${esc(l.summaryStakeholders)}</b><br>${stakeholderList.length?stakeholderList.map(s=>"• "+esc(s.text)).join("<br>"):`<i>${esc(l.summaryStakeholdersNone)}</i>`}</p>
+ <p><b>${esc(l.summaryPoints)}</b><br>${pointsHtml||`<i>${esc(l.summaryPointsNone)}</i>`}</p>
+ <p><b>${esc(l.summaryIdeas)}</b>${selectedIdeasHtml||`<br><i>${esc(l.summaryIdeasNone)}</i>`}</p>
+ <p><b>${esc(l.summaryGood)}</b> ${formatTestSummary(data.good)}</p>
+ <p><b>${esc(l.summaryBad)}</b> ${formatTestSummary(data.bad)}</p>
+ <p><b>${esc(l.summaryChange)}</b> ${formatTestSummary(data.change)}</p>
+ <div class="actions"><button class="primary" onclick="saveFile()">💾 Problem speichern</button>
+ <button class="primary" onclick="window.print()">🖨️ Drucken / als PDF speichern</button>
+ <button class="secondary" onclick="resetAll()">♻️ Neues Problem</button></div>
+ </div>`;
+ document.getElementById("next").textContent="← Zurück zu Schritt 7";
+ document.getElementById("bar").style.width="100%";
+ showingSummary=true;
+ renderStepNav();
+ save();
+}
+
+function resetAll(){newProblem();}
+
+function setStatus(msg){
+ const el=document.getElementById("saveStatus");
+ if(el) el.textContent=msg;
+}
+
+/* ---------- Speichern / Laden ---------- */
+
+function saveFile(){
+ let name=data.filename||(data.problem||"Mein_Problemloser");
+ name=name.trim().replace(/[^a-zA-Z0-9äöüÄÖÜß _-]/g,"").replace(/\s+/g,"_").slice(0,60)||"Mein_Problemloser";
+ const payload={version:4,savedAt:new Date().toISOString(),data:data};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download=name+".json";
+ document.body.appendChild(a); a.click(); a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+ setStatus("💾 Gespeichert: "+new Date().toLocaleString("de-DE"));
+}
+
+function openFile(){document.getElementById("fileInput").click();}
+
+function loadFile(event){
+ const file=event.target.files[0];
+ if(!file) return;
+ const reader=new FileReader();
+ reader.onload=function(){
+   try{
+     const payload=JSON.parse(reader.result);
+     if(!payload.data||typeof payload.data!=="object") throw new Error("Ungültige Datei");
+     data=payload.data;
+     save();
+     current=0;
+     render();
+     setStatus("📂 Geöffnet: "+file.name);
+   }catch(e){
+     alert("Diese Datei konnte nicht geöffnet werden.");
+   }
+ };
+ reader.readAsText(file);
+ event.target.value="";
+}
+
+function newProblem(){
+ if(confirm("Das aktuelle Problem löschen und ein neues beginnen?")){
+   localStorage.removeItem("problemloser");
+   data={}; current=0; showingSummary=false; render();
+   setStatus("🆕 Neues Problem");
+ }
+}
+
+applyModeChrome();
+render();
+</script>
+</body>
+</html>
