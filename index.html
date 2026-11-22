@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title id="pageTitle">Problemlöser</title>
+<title id="pageTitle">Meine Mission</title>
 <style>
   :root{--bg:#f4f6f8;--card:#fff;--text:#20252b;--muted:#65707c;--line:#d9dee5;--accent:#3b6ea8;--ok:#2f7d4a;}
   *{box-sizing:border-box}
@@ -73,9 +73,9 @@
     <button id="modeBtnEngineer" onclick="setMode('engineer')">⚙️ Ingenieur</button>
   </div>
   <div class="actions" style="justify-content:center;margin:12px 0">
-    <button class="primary" onclick="saveFile()">💾 Problem speichern</button>
-    <button class="secondary" onclick="openFile()">📂 Problem öffnen</button>
-    <button class="secondary" onclick="newProblem()">🆕 Neues Problem</button>
+    <button id="btnSave" class="primary" onclick="saveFile()"></button>
+    <button id="btnOpen" class="secondary" onclick="openFile()"></button>
+    <button id="btnNew" class="secondary" onclick="newProblem()"></button>
   </div>
   <div id="saveStatus" class="tip" style="margin:8px 0"></div>
   <input id="fileInput" type="file" accept=".json,application/json" class="hidden" onchange="loadFile(event)">
@@ -155,14 +155,14 @@ if(sessionStorage.getItem("problemloser_gate_ok")==="1"){ unlockGate(); }
 
 const LABELS = {
  kids:{
-   pageTitle:"Mein Problemlöser",
-   appTitle:"🧠 Mein Problemlöser",
+   pageTitle:"Meine Mission",
+   appTitle:"🧠 Meine Mission",
    appSub:"Erst verstehen. Dann lösen. Ausprobieren. Verbessern.",
    appTip:"💡 Du musst nicht sofort die perfekte Lösung finden. Gute Ideen darf man ausprobieren und verbessern.",
    steps:[
-     {title:"Was ist los?",hint:"Was genau ist mein Problem?"},
-     {title:"Was soll sein?",hint:"Woran merke ich, dass mein Problem gelöst ist? (Ziel)"},
-     {title:"Wer ist beteiligt?",hint:"Wer hat mit deinem Problem zu tun oder kann dir helfen? (z. B. Mama, Papa, Lehrerin, bester Freund)"},
+     {title:"Was ist los?",hint:"Worum geht es bei meiner Mission? Was genau ist los?"},
+     {title:"Was soll sein?",hint:"Woran merke ich, dass meine Mission geschafft ist? (Ziel)"},
+     {title:"Wer ist beteiligt?",hint:"Wer hat mit deiner Mission zu tun oder kann dir helfen? (z. B. Mama, Papa, Lehrerin, bester Freund)"},
      {title:"Was muss dafür klappen?",hint:"Welche Dinge müssen funktionieren, damit ich mein Ziel erreiche? (Anforderungsanalyse)"},
      {title:"Welche Ideen habe ich?",hint:"Was könnte ich ausprobieren? Für jeden ausgewählten Punkt kannst du Ideen sammeln. (Lösungskonzepte)"},
      {title:"Welche Ideen probiere ich aus?",hint:"Wähle eine oder mehrere Ideen aus und erkläre, warum und wie du sie umsetzt."},
@@ -179,8 +179,8 @@ const LABELS = {
    needsHeader:"Was muss dafür klappen?",
    needPh:"Was muss klappen?",
    addNeed:"+ Noch etwas",
-   originHeader:"Bei welchem dieser Punkte entsteht eigentlich das Problem? Oben auswählen oder unten beschreiben.",
-   originPh:"Problem bei:",
+   originHeader:"Wo hakt es eigentlich? Oben auswählen oder unten beschreiben.",
+   originPh:"Hakt bei:",
    addOrigin:"+ Noch etwas",
    noPointsMsg:"Gehe einen Schritt zurück und wähle mindestens einen Punkt aus.",
    ideasHeaderPrefix:"Ideen für: ",
@@ -195,8 +195,14 @@ const LABELS = {
      {key:"change",label:"Was ändere oder probiere ich jetzt?",ph:"Beim nächsten Versuch mache ich ..."}
    ],
    addTestField:"+ Weiterer Punkt",
-   summaryTitle:"🎉 Dein Problemlöser-Ergebnis",
-   summaryProblem:"Problem:",
+   btnSave:"💾 Mission speichern",
+   btnOpen:"📂 Mission öffnen",
+   btnNew:"🆕 Neue Mission",
+   btnNewSummary:"♻️ Neue Mission",
+   newConfirm:"Die aktuelle Mission löschen und eine neue beginnen?",
+   newStatus:"🆕 Neue Mission",
+   summaryTitle:"🎉 Deine Mission im Überblick",
+   summaryProblem:"Mission:",
    summaryGoal:"Ziel:",
    summaryStakeholders:"Beteiligte:",
    summaryStakeholdersNone:"Keine erfasst",
@@ -250,6 +256,12 @@ const LABELS = {
      {key:"change",label:"Welche Anpassung / nächste Iteration ist nötig?",ph:"z. B. Auslegung anpassen und erneut testen"}
    ],
    addTestField:"+ Weiterer Punkt",
+   btnSave:"💾 Problem speichern",
+   btnOpen:"📂 Problem öffnen",
+   btnNew:"🆕 Neues Problem",
+   btnNewSummary:"♻️ Neues Problem",
+   newConfirm:"Das aktuelle Problem löschen und ein neues beginnen?",
+   newStatus:"🆕 Neues Problem",
    summaryTitle:"📊 Ergebnis der Problemlösung",
    summaryProblem:"Problemstellung:",
    summaryGoal:"Zielsetzung:",
@@ -297,6 +309,9 @@ function applyModeChrome(){
  document.getElementById("appTitle").textContent=l.appTitle;
  document.getElementById("appSub").textContent=l.appSub;
  document.getElementById("appTip").textContent=l.appTip;
+ document.getElementById("btnSave").textContent=l.btnSave;
+ document.getElementById("btnOpen").textContent=l.btnOpen;
+ document.getElementById("btnNew").textContent=l.btnNew;
  document.getElementById("modeBtnKids").classList.toggle("active",mode==="kids");
  document.getElementById("modeBtnEngineer").classList.toggle("active",mode==="engineer");
 }
@@ -612,9 +627,9 @@ function summary(){
  <p><b>${esc(l.summaryGood)}</b> ${formatTestSummary(data.good)}</p>
  <p><b>${esc(l.summaryBad)}</b> ${formatTestSummary(data.bad)}</p>
  <p><b>${esc(l.summaryChange)}</b> ${formatTestSummary(data.change)}</p>
- <div class="actions"><button class="primary" onclick="saveFile()">💾 Problem speichern</button>
+ <div class="actions"><button class="primary" onclick="saveFile()">${l.btnSave}</button>
  <button class="primary" onclick="window.print()">🖨️ Drucken / als PDF speichern</button>
- <button class="secondary" onclick="resetAll()">♻️ Neues Problem</button></div>
+ <button class="secondary" onclick="resetAll()">${l.btnNewSummary}</button></div>
  </div>`;
  document.getElementById("next").textContent="← Zurück zu Schritt 7";
  document.getElementById("bar").style.width="100%";
@@ -669,10 +684,10 @@ function loadFile(event){
 }
 
 function newProblem(){
- if(confirm("Das aktuelle Problem löschen und ein neues beginnen?")){
+ if(confirm(L().newConfirm)){
    localStorage.removeItem("problemloser");
    data={}; current=0; showingSummary=false; render();
-   setStatus("🆕 Neues Problem");
+   setStatus(L().newStatus);
  }
 }
 
